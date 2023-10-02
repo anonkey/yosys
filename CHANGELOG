@@ -4,6 +4,8 @@ List of major changes and improvements between releases
 
 Yosys 0.34 .. Yosys 0.35-dev
 --------------------------
+* New commands and options
+    - Added option "--" to pass arguments down to tcl when using -c option.
 
 Yosys 0.33 .. Yosys 0.34
 --------------------------

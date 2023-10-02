@@ -29,6 +29,10 @@
 #  include <editline/readline.h>
 #endif
 
+#ifdef YOSYS_ENABLE_TCL
+#  include <vector>
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
@@ -53,33 +57,39 @@
 #  include <unistd.h>
 #else
 char *optarg;
-int optind = 1, optcur = 1;
+int optind = 1, optcur = 1, optopt = 0;
 int getopt(int argc, char **argv, const char *optstring)
 {
 	if (optind >= argc || argv[optind][0] != '-')
 		return -1;
 
 	bool takes_arg = false;
-	int opt = argv[optind][optcur];
+	optopt = argv[optind][optcur];
+
+	if (optopt == '-') {
+		optind++;
+		return -1;
+	}
+
 	for (int i = 0; optstring[i]; i++)
-		if (opt == optstring[i] && optstring[i + 1] == ':')
+		if (optopt == optstring[i] && optstring[i + 1] == ':')
 			takes_arg = true;
 
 	if (!takes_arg) {
 		if (argv[optind][++optcur] == 0)
 			optind++, optcur = 1;
-		return opt;
+		return optopt;
 	}
 
 	if (argv[optind][++optcur]) {
 		optarg = argv[optind++] + optcur;
 		optcur = 1;
-		return opt;
+		return optopt;
 	}
 
 	optarg = argv[++optind];
 	optind++, optcur = 1;
-	return opt;
+	return optopt;
 }
 #endif
 
@@ -222,6 +232,7 @@ int main(int argc, char **argv)
 	std::string topmodule = "";
 	std::string perffile = "";
 	bool scriptfile_tcl = false;
+	bool skip_args_left = false;
 	bool print_banner = true;
 	bool print_stats = true;
 	bool call_abort = false;
@@ -368,7 +379,7 @@ int main(int argc, char **argv)
 	}
 
 	int opt;
-	while ((opt = getopt(argc, argv, "MXAQTVCSgm:f:Hh:b:o:p:l:L:qv:tds:c:W:w:e:r:D:P:E:x:B:")) != -1)
+	while ((opt = getopt(argc, argv, "+MXAQTVCSgm:f:Hh:b:o:p:l:L:qv:tds:c:W:w:e:r:D:P:E:x:B:")) != -1)
 	{
 		switch (opt)
 		{
@@ -456,6 +467,7 @@ int main(int argc, char **argv)
 			run_shell = false;
 			break;
 		case 'c':
+
 			scriptfile = optarg;
 			scriptfile_tcl = true;
 			run_shell = false;
@@ -514,6 +526,7 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 	}
+	skip_args_left = argv[optind - 1][0] == '-' && argv[optind - 1][1] == '-';
 
 	if (log_errfile == NULL) {
 		log_files.push_back(stdout);
@@ -560,18 +573,30 @@ int main(int argc, char **argv)
 			vdef_cmd += " " + vdef;
 		run_pass(vdef_cmd);
 	}
-
-	while (optind < argc)
-		if (run_frontend(argv[optind++], frontend_command))
-			run_shell = false;
+	if (!skip_args_left) {
+		while (optind < argc && argv[optind][0] != '-')
+			if (run_frontend(argv[optind++], frontend_command))
+				run_shell = false;
+	}
 
 	if (!topmodule.empty())
 		run_pass("hierarchy -top " + topmodule);
-
 	if (!scriptfile.empty()) {
 		if (scriptfile_tcl) {
 #ifdef YOSYS_ENABLE_TCL
-			if (Tcl_EvalFile(yosys_get_tcl_interp(), scriptfile.c_str()) != TCL_OK)
+			if (optind < argc && argv[optind][0] == '-') {
+				optind++;
+			}
+			int tcl_argc = argc - optind;
+			std::vector<Tcl_Obj*> script_args;
+			Tcl_Interp *interp = yosys_get_tcl_interp();
+			for (int i = optind; i < argc; ++i)
+				script_args.push_back(Tcl_NewStringObj(argv[i], strlen(argv[i])));
+
+			Tcl_ObjSetVar2(interp, Tcl_NewStringObj("argc", 4), NULL, Tcl_NewIntObj(tcl_argc), 0);
+			Tcl_ObjSetVar2(interp, Tcl_NewStringObj("argv", 4), NULL, Tcl_NewListObj(tcl_argc, script_args.data()), 0);
+			Tcl_ObjSetVar2(interp, Tcl_NewStringObj("argv0", 5), NULL, Tcl_NewStringObj(scriptfile.c_str(), scriptfile.length()), 0);
+			if (Tcl_EvalFile(interp, scriptfile.c_str()) != TCL_OK)
 				log_error("TCL interpreter returned an error: %s\n", Tcl_GetStringResult(yosys_get_tcl_interp()));
 #else
 			log_error("Can't exectue TCL script: this version of yosys is not built with TCL support enabled.\n");
