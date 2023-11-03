@@ -224,6 +224,8 @@ int main(int argc, char **argv)
 	std::string frontend_command = "auto";
 	std::string backend_command = "auto";
 	std::vector<std::string> vlog_defines;
+	std::vector<std::string> frontend_files;
+	std::vector<std::string> script_args;
 	std::vector<std::string> passes_commands;
 	std::vector<std::string> plugin_filenames;
 	std::string output_filename = "";
@@ -379,7 +381,7 @@ int main(int argc, char **argv)
 	}
 
 	int opt;
-	while ((opt = getopt(argc, argv, "+MXAQTVCSgm:f:Hh:b:o:p:l:L:qv:tds:c:W:w:e:r:D:P:E:x:B:")) != -1)
+	while ((opt = getopt(argc, argv, "-MXAQTVCSgm:f:Hh:b:o:p:l:L:qv:tds:c:W:w:e:r:D:P:E:x:B:")) != -1)
 	{
 		switch (opt)
 		{
@@ -520,6 +522,9 @@ int main(int argc, char **argv)
 			break;
 		case 'C':
 			run_tcl_shell = true;
+			break;
+		case '\001':
+			printf("LOL %s", argv[optind]);
 			break;
 		default:
 			fprintf(stderr, "Run '%s -h' for help.\n", argv[0]);
